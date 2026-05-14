@@ -7,16 +7,6 @@
     <title>Nepali Birthday Countdown</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Primary CDN for Nepali Date -->
-    <script src="https://unpkg.com/nepali-date-converter/dist/nepali-date-converter.umd.js"></script>
-    <!-- Fallback CDN if Brave blocks the first one -->
-    <script>
-        if (typeof window.NepaliDate === 'undefined') {
-            document.write('<script src="https://cdn.jsdelivr.net/npm/nepali-date-converter/dist/nepali-date-converter.umd.js"><\\/script>');
-        }
-    </script>
-
     <style>
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
@@ -42,7 +32,10 @@
             </div>
         </div>
 
-        <!-- Birthdays List / Main Container -->
+        <!-- Global Error Box (Hidden by default) -->
+        <div id="debug-box" class="hidden mb-6 bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm font-mono shadow-sm"></div>
+
+        <!-- Main Container -->
         <div id="birthday-list" class="space-y-4">
             <!-- Loading Spinner -->
             <div id="loading-spinner" class="text-center py-12 text-slate-400">
@@ -50,7 +43,7 @@
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <p>Loading your dates...</p>
+                <p id="loading-text">Loading components...</p>
             </div>
         </div>
 
@@ -58,204 +51,246 @@
 
     <script>
         const NEPALI_MONTHS = ['Baisakh', 'Jestha', 'Asadh', 'Shrawan', 'Bhadra', 'Ashoj', 'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra'];
+        const listContainer = document.getElementById('birthday-list');
+        const todayDateSpan = document.getElementById('today-date');
+        const loadingText = document.getElementById('loading-text');
 
-        document.addEventListener("DOMContentLoaded", () => {
-            const listContainer = document.getElementById('birthday-list');
-            const todayDateSpan = document.getElementById('today-date');
+        // Catch any completely unexpected errors and show them on screen
+        window.addEventListener('error', function(e) {
+            const debugBox = document.getElementById('debug-box');
+            debugBox.innerHTML = `<strong>System Error:</strong> ${e.message}<br><small>This usually means a typo in the code or a completely blocked network.</small>`;
+            debugBox.classList.remove('hidden');
+            document.getElementById('loading-spinner').classList.add('hidden');
+        });
 
-            // Wait a brief moment to ensure the CDNs had time to load
-            let attempts = 0;
-            const checkLib = setInterval(() => {
-                if (window.NepaliDate) {
-                    clearInterval(checkLib);
-                    initApp();
-                } else {
-                    attempts++;
-                    // If it takes more than 3 seconds, Brave has blocked it permanently.
-                    if (attempts > 15) { 
-                        clearInterval(checkLib);
-                        showBraveWarning();
-                    }
+        // 1. DYNAMICALLY LOAD SCRIPT (Bypasses the "freeze" issue)
+        function loadScript(url) {
+            return new Promise((resolve) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = () => resolve(true);
+                script.onerror = () => resolve(false); // Fails safely!
+                document.body.appendChild(script);
+            });
+        }
+
+        async function bootstrapApp() {
+            try {
+                loadingText.innerText = "Loading Calendar...";
+                
+                // Try to load from jsdelivr first
+                let libLoaded = await loadScript('https://cdn.jsdelivr.net/npm/nepali-date-converter/dist/nepali-date-converter.umd.js');
+                
+                // If it fails, try unpkg
+                if (!libLoaded) {
+                    libLoaded = await loadScript('https://unpkg.com/nepali-date-converter/dist/nepali-date-converter.umd.js');
                 }
-            }, 200);
 
-            // User-friendly UI if Brave blocks the scripts
-            function showBraveWarning() {
-                todayDateSpan.innerText = "Blocked by Browser";
-                listContainer.innerHTML = `
-                    <div class="bg-orange-50 border border-orange-200 p-6 md:p-8 rounded-2xl text-center shadow-sm animate-fade-in">
-                        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-orange-100">
-                            <span class="text-3xl">🦁</span>
-                        </div>
-                        <h3 class="text-xl font-bold text-orange-900 mb-2">Calendar Script Blocked!</h3>
-                        <p class="text-orange-800 mb-6 max-w-sm mx-auto leading-relaxed">
-                            It looks like <strong>Brave Browser Shields</strong> or an AdBlocker is actively preventing the Nepali Calendar from downloading.
-                        </p>
-                        <div class="bg-white p-5 rounded-xl border border-orange-100 inline-block text-left shadow-sm">
-                            <p class="font-bold text-slate-800 text-sm mb-2">How to fix this quickly:</p>
-                            <ol class="text-sm text-slate-600 list-decimal pl-5 space-y-2">
-                                <li>Tap the <strong>Lion icon</strong> in your address bar (top right).</li>
-                                <li>Toggle <strong>Shields DOWN</strong> for this website.</li>
-                                <li>The page will auto-refresh and load instantly!</li>
-                            </ol>
-                        </div>
-                    </div>
-                `;
-            }
+                // If BOTH fail or window.NepaliDate isn't there, Brave has blocked it
+                if (!libLoaded || typeof window.NepaliDate === 'undefined') {
+                    showBraveWarning();
+                    return;
+                }
 
-            function initApp() {
-                // 1. Set Today's Date
+                // 2. SET TODAY'S DATE
                 const today = new window.NepaliDate();
                 todayDateSpan.innerText = `${today.getDate()} ${NEPALI_MONTHS[today.getMonth()]} ${today.getYear()}`;
 
-                // 2. Fetch data directly from GitHub (auto bypasses cache)
-                attemptAutoFetch();
-            }
-
-            async function attemptAutoFetch() {
+                // 3. FETCH JSON DATA
+                loadingText.innerText = "Fetching your dates...";
+                
+                let res;
                 try {
-                    // Fetch from the same directory on GitHub
-                    const res = await fetch('birthdays.json?t=' + new Date().getTime());
-                    if (!res.ok) throw new Error('Data file not found on server');
-                    const data = await res.json();
-                    processAndRender(data);
-                } catch (e) {
-                    listContainer.innerHTML = `
-                        <div class="bg-red-50 text-red-700 p-6 rounded-xl border border-red-200 text-center">
-                            <h3 class="font-bold text-lg mb-1">File Not Found</h3>
-                            <p>We couldn't find the <code>birthdays.json</code> file in your GitHub repository. Please make sure it's uploaded in the same folder as this HTML file!</p>
-                        </div>
-                    `;
-                }
-            }
-
-            // 3. Process Dates and Render
-            function processAndRender(data) {
-                if (!Array.isArray(data)) {
-                    listContainer.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-xl text-center">Data format error. JSON must be an array.</div>`;
+                    res = await fetch('birthdays.json?t=' + Date.now()); // Date.now() prevents caching issues
+                } catch (fetchErr) {
+                    showError("Network Error", "Could not connect to the server. Check your internet connection.");
                     return;
                 }
 
-                try {
-                    const enrichedData = data.map(item => {
-                        const calculation = calculateCountdownAndAge(item.birthday);
-                        return {
-                            ...item,
-                            daysLeft: calculation.days,
-                            turnsAge: calculation.turnsAge,
-                            upcomingDateStr: calculation.upcomingDateStr
-                        };
-                    });
-
-                    // Sort by closest birthday
-                    enrichedData.sort((a, b) => a.daysLeft - b.daysLeft);
-                    renderCards(enrichedData);
-                } catch (e) {
-                    listContainer.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-xl text-center">Error calculating dates. Ensure JSON dates are in "YYYY/MM/DD" format.</div>`;
-                }
-            }
-
-            function calculateCountdownAndAge(birthdayBS) {
-                const parts = birthdayBS.split('/');
-                const bYear = Number(parts[0]);
-                const bMonth = Number(parts[1]) - 1; // JS months are 0-11
-                const bDate = Number(parts[2]);
-
-                const currentNp = new window.NepaliDate();
-                const tYear = currentNp.getYear();
-                const tMonth = currentNp.getMonth();
-                const tDate = currentNp.getDate();
-
-                // Check if the birthday has passed this year
-                let isNextYear = false;
-                if (bMonth < tMonth) {
-                    isNextYear = true;
-                } else if (bMonth === tMonth && bDate < tDate) {
-                    isNextYear = true;
-                }
-
-                const targetYear = tYear + (isNextYear ? 1 : 0);
-                const targetBday = new window.NepaliDate(targetYear, bMonth, bDate);
-                
-                // Convert to normal JS Dates to accurately get the days between
-                const todayJs = new Date();
-                todayJs.setHours(0, 0, 0, 0); 
-                
-                const targetJs = targetBday.toJsDate();
-                targetJs.setHours(0, 0, 0, 0); 
-
-                const diffTime = targetJs.getTime() - todayJs.getTime();
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
-                const turnsAge = targetYear - bYear;
-                const upcomingDateStr = `${bDate} ${NEPALI_MONTHS[bMonth]}`;
-
-                return {
-                    days: diffDays < 0 ? 0 : diffDays,
-                    turnsAge: turnsAge,
-                    upcomingDateStr: upcomingDateStr
-                };
-            }
-
-            // 4. Build the beautiful UI
-            function renderCards(birthdays) {
-                listContainer.innerHTML = '';
-
-                if (birthdays.length === 0) {
-                    listContainer.innerHTML = `
-                        <div class="text-center py-10 bg-white rounded-xl border border-slate-200">
-                            <p class="text-slate-500">No birthdays found in your JSON file.</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                birthdays.forEach((person, index) => {
-                    const isToday = person.daysLeft === 0;
-                    const isTomorrow = person.daysLeft === 1;
-
-                    let chipClasses = "bg-slate-100 text-slate-700";
-                    let daysLabel = `${person.daysLeft} Days`;
-                    
-                    if (isToday) {
-                        chipClasses = "bg-gradient-to-r from-orange-400 to-pink-500 text-white shadow-md";
-                        daysLabel = "Today! 🎉";
-                    } else if (isTomorrow) {
-                        chipClasses = "bg-indigo-100 text-indigo-700";
-                        daysLabel = "Tomorrow";
-                    } else if (person.daysLeft <= 7) {
-                        chipClasses = "bg-yellow-100 text-yellow-800";
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        showError("File Missing", "Could not find <b>birthdays.json</b> in your GitHub repository. <br><br><b>Important:</b> Ensure the file is named exactly <code>birthdays.json</code> (all lowercase) and is in the exact same folder as this HTML file.");
+                    } else {
+                        showError("Server Error", `GitHub returned an error: ${res.status}`);
                     }
+                    return;
+                }
 
-                    const cardTheme = isToday ? "border-pink-200 ring-2 ring-pink-100 bg-pink-50/60" : "border-slate-200 bg-white hover:border-indigo-200";
-                    const initials = person.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    showError("Invalid JSON", "We found birthdays.json, but there is a typo in it. Make sure you don't have a missing comma or bracket in your JSON file.");
+                    return;
+                }
 
-                    const card = document.createElement('div');
-                    card.className = `flex items-center justify-between p-5 rounded-2xl border ${cardTheme} shadow-sm transition-all animate-fade-in`;
-                    card.style.animationDelay = `${index * 0.05}s`;
-                    
-                    card.innerHTML = `
-                        <div class="flex items-center flex-1 min-w-0">
-                            <div class="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-inner mr-4 flex-shrink-0">
-                                ${initials}
-                            </div>
-                            <div class="truncate pr-2">
-                                <h3 class="text-lg font-bold text-slate-900 truncate">${person.name}</h3>
-                                <p class="text-sm text-slate-500 mt-0.5 truncate">
-                                    Turning <span class="font-medium text-slate-700">${person.turnsAge}</span> on ${person.upcomingDateStr}
-                                </p>
-                            </div>
-                        </div>
-                        <div class="flex-shrink-0">
-                            <span class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-bold text-sm inline-block ${chipClasses}">
-                                ${daysLabel}
-                            </span>
-                        </div>
-                    `;
-                    listContainer.appendChild(card);
-                });
+                // 4. RENDER DATA
+                processAndRender(data);
+
+            } catch (err) {
+                showError("Unexpected Error", err.message);
             }
-        });
+        }
+
+        function showBraveWarning() {
+            todayDateSpan.innerText = "Blocked by Browser";
+            listContainer.innerHTML = `
+                <div class="bg-orange-50 border border-orange-200 p-6 md:p-8 rounded-2xl text-center shadow-sm animate-fade-in">
+                    <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-orange-100">
+                        <span class="text-3xl">🦁</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-orange-900 mb-2">Calendar Blocked by Brave!</h3>
+                    <p class="text-orange-800 mb-6 max-w-sm mx-auto leading-relaxed">
+                        Brave Browser's aggressive Shields are preventing the Nepali Calendar library from loading.
+                    </p>
+                    <div class="bg-white p-5 rounded-xl border border-orange-100 inline-block text-left shadow-sm">
+                        <p class="font-bold text-slate-800 text-sm mb-2">How to fix this right now:</p>
+                        <ol class="text-sm text-slate-600 list-decimal pl-5 space-y-2">
+                            <li>Tap the <strong>Lion icon</strong> in your address bar (top right).</li>
+                            <li>Toggle <strong>Shields DOWN</strong> for this website.</li>
+                            <li>The page will instantly reload and work perfectly!</li>
+                        </ol>
+                    </div>
+                </div>
+            `;
+        }
+
+        function showError(title, description) {
+            listContainer.innerHTML = `
+                <div class="bg-red-50 text-red-800 p-6 rounded-2xl border border-red-200 text-center animate-fade-in">
+                    <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    </div>
+                    <h3 class="font-bold text-lg mb-2">${title}</h3>
+                    <p class="text-red-700 text-sm">${description}</p>
+                </div>
+            `;
+        }
+
+        function processAndRender(data) {
+            if (!Array.isArray(data)) {
+                showError("Data Format Error", "Your JSON file is valid, but it needs to be an Array (a list wrapped in <code>[ ]</code> brackets).");
+                return;
+            }
+
+            try {
+                const enrichedData = data.map(item => {
+                    const calculation = calculateCountdownAndAge(item.birthday);
+                    return {
+                        ...item,
+                        daysLeft: calculation.days,
+                        turnsAge: calculation.turnsAge,
+                        upcomingDateStr: calculation.upcomingDateStr
+                    };
+                });
+
+                enrichedData.sort((a, b) => a.daysLeft - b.daysLeft);
+                renderCards(enrichedData);
+            } catch (e) {
+                showError("Calculation Error", "Could not calculate dates. Make sure all birthdays in your JSON are formatted exactly as <code>YYYY/MM/DD</code>.");
+            }
+        }
+
+        function calculateCountdownAndAge(birthdayBS) {
+            const parts = birthdayBS.split('/');
+            const bYear = Number(parts[0]);
+            const bMonth = Number(parts[1]) - 1; // JS Months are 0-11
+            const bDate = Number(parts[2]);
+
+            const currentNp = new window.NepaliDate();
+            const tYear = currentNp.getYear();
+            const tMonth = currentNp.getMonth();
+            const tDate = currentNp.getDate();
+
+            let isNextYear = false;
+            if (bMonth < tMonth) {
+                isNextYear = true;
+            } else if (bMonth === tMonth && bDate < tDate) {
+                isNextYear = true;
+            }
+
+            const targetYear = tYear + (isNextYear ? 1 : 0);
+            const targetBday = new window.NepaliDate(targetYear, bMonth, bDate);
+            
+            const todayJs = new Date();
+            todayJs.setHours(0, 0, 0, 0); 
+            
+            const targetJs = targetBday.toJsDate();
+            targetJs.setHours(0, 0, 0, 0); 
+
+            const diffTime = targetJs.getTime() - todayJs.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            const turnsAge = targetYear - bYear;
+            const upcomingDateStr = `${bDate} ${NEPALI_MONTHS[bMonth]}`;
+
+            return {
+                days: diffDays < 0 ? 0 : diffDays,
+                turnsAge: turnsAge,
+                upcomingDateStr: upcomingDateStr
+            };
+        }
+
+        function renderCards(birthdays) {
+            listContainer.innerHTML = '';
+
+            if (birthdays.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-10 bg-white rounded-xl border border-slate-200">
+                        <p class="text-slate-500">No birthdays found in your JSON file.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            birthdays.forEach((person, index) => {
+                const isToday = person.daysLeft === 0;
+                const isTomorrow = person.daysLeft === 1;
+
+                let chipClasses = "bg-slate-100 text-slate-700";
+                let daysLabel = `${person.daysLeft} Days`;
+                
+                if (isToday) {
+                    chipClasses = "bg-gradient-to-r from-orange-400 to-pink-500 text-white shadow-md";
+                    daysLabel = "Today! 🎉";
+                } else if (isTomorrow) {
+                    chipClasses = "bg-indigo-100 text-indigo-700";
+                    daysLabel = "Tomorrow";
+                } else if (person.daysLeft <= 7) {
+                    chip itClasses = "bg-yellow-100 text-yellow-800";
+                }
+
+                const cardTheme = isToday ? "border-pink-200 ring-2 ring-pink-100 bg-pink-50/60" : "border-slate-200 bg-white hover:border-indigo-200";
+                const initials = person.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+                const card = document.createElement('div');
+                card.className = `flex items-center justify-between p-5 rounded-2xl border ${cardTheme} shadow-sm transition-all animate-fade-in`;
+                card.style.animationDelay = `${index * 0.05}s`;
+                
+                card.innerHTML = `
+                    <div class="flex items-center flex-1 min-w-0">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-lg shadow-inner mr-4 flex-shrink-0">
+                            ${initials}
+                        </div>
+                        <div class="truncate pr-2">
+                            <h3 class="text-lg font-bold text-slate-900 truncate">${person.name}</h3>
+                            <p class="text-sm text-slate-500 mt-0.5 truncate">
+                                Turning <span class="font-medium text-slate-700">${person.turnsAge}</span> on ${person.upcomingDateStr}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <span class="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl font-bold text-sm inline-block ${chipClasses}">
+                            ${daysLabel}
+                        </span>
+                    </div>
+                `;
+                listContainer.appendChild(card);
+            });
+        }
+
+        // Start the engine once the page has rendered
+        document.addEventListener("DOMContentLoaded", bootstrapApp);
     </script>
 </body>
 </html>
