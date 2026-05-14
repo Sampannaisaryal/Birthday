@@ -1,4 +1,4 @@
-
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,8 +7,16 @@
     <title>Nepali Birthday Countdown</title>
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Nepali Date Converter Library (Locked to stable version 2.2.0) -->
-    <script src="https://cdn.jsdelivr.net/npm/nepali-date-converter@2.2.0/dist/nepali-date-converter.umd.min.js"></script>
+    
+    <!-- Primary CDN for Nepali Date -->
+    <script src="https://unpkg.com/nepali-date-converter/dist/nepali-date-converter.umd.js"></script>
+    <!-- Fallback CDN if Brave blocks the first one -->
+    <script>
+        if (typeof window.NepaliDate === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/nepali-date-converter/dist/nepali-date-converter.umd.js"><\\/script>');
+        }
+    </script>
+
     <style>
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
@@ -30,29 +38,11 @@
             
             <div class="inline-flex items-center bg-indigo-50 border border-indigo-100 px-5 py-2.5 rounded-full shadow-sm">
                 <svg class="w-5 h-5 text-indigo-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                <span class="font-medium text-indigo-900">Today's Date: <span id="today-date" class="font-bold text-indigo-700">Loading...</span></span>
+                <span class="font-medium text-indigo-900">Today's Date: <span id="today-date" class="font-bold text-indigo-700">Connecting...</span></span>
             </div>
         </div>
 
-        <!-- File Upload Fallback -->
-        <div id="upload-section" class="hidden mb-8 bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center transition-all animate-fade-in">
-            <div class="w-16 h-16 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-            </div>
-            <h2 class="text-xl font-bold text-slate-800 mb-2">Select Your Data</h2>
-            <p class="text-slate-500 mb-6 max-w-md mx-auto">Please select your <code class="bg-slate-100 px-1 py-0.5 rounded text-sm text-slate-700 font-mono">birthdays.json</code> file to view the countdowns.</p>
-            
-            <label class="cursor-pointer inline-flex items-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors shadow-sm">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                <span>Choose JSON File</span>
-                <input type="file" id="file-input" accept=".json" class="hidden" />
-            </label>
-        </div>
-
-        <!-- Error Message (Visible only on failure) -->
-        <div id="error-message" class="hidden mb-8 bg-red-50 text-red-700 p-4 rounded-xl border border-red-200 text-center font-medium shadow-sm"></div>
-
-        <!-- Birthdays List -->
+        <!-- Birthdays List / Main Container -->
         <div id="birthday-list" class="space-y-4">
             <!-- Loading Spinner -->
             <div id="loading-spinner" class="text-center py-12 text-slate-400">
@@ -60,104 +50,89 @@
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <p>Loading...</p>
+                <p>Loading your dates...</p>
             </div>
         </div>
 
     </div>
 
     <script>
-        // Global Error Handler for mobile debugging
-        window.addEventListener('error', function(e) {
-            const errDiv = document.getElementById('error-message');
-            if(errDiv) {
-                errDiv.innerText = "Error: " + e.message;
-                errDiv.classList.remove('hidden');
-                document.getElementById('loading-spinner')?.classList.add('hidden');
-            }
-        });
-
         const NEPALI_MONTHS = ['Baisakh', 'Jestha', 'Asadh', 'Shrawan', 'Bhadra', 'Ashoj', 'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra'];
 
         document.addEventListener("DOMContentLoaded", () => {
-            const uploadSection = document.getElementById('upload-section');
-            const fileInput = document.getElementById('file-input');
             const listContainer = document.getElementById('birthday-list');
             const todayDateSpan = document.getElementById('today-date');
 
-            function showError(msg) {
-                const errDiv = document.getElementById('error-message');
-                errDiv.innerText = msg;
-                errDiv.classList.remove('hidden');
+            // Wait a brief moment to ensure the CDNs had time to load
+            let attempts = 0;
+            const checkLib = setInterval(() => {
+                if (window.NepaliDate) {
+                    clearInterval(checkLib);
+                    initApp();
+                } else {
+                    attempts++;
+                    // If it takes more than 3 seconds, Brave has blocked it permanently.
+                    if (attempts > 15) { 
+                        clearInterval(checkLib);
+                        showBraveWarning();
+                    }
+                }
+            }, 200);
+
+            // User-friendly UI if Brave blocks the scripts
+            function showBraveWarning() {
+                todayDateSpan.innerText = "Blocked by Browser";
+                listContainer.innerHTML = `
+                    <div class="bg-orange-50 border border-orange-200 p-6 md:p-8 rounded-2xl text-center shadow-sm animate-fade-in">
+                        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-orange-100">
+                            <span class="text-3xl">🦁</span>
+                        </div>
+                        <h3 class="text-xl font-bold text-orange-900 mb-2">Calendar Script Blocked!</h3>
+                        <p class="text-orange-800 mb-6 max-w-sm mx-auto leading-relaxed">
+                            It looks like <strong>Brave Browser Shields</strong> or an AdBlocker is actively preventing the Nepali Calendar from downloading.
+                        </p>
+                        <div class="bg-white p-5 rounded-xl border border-orange-100 inline-block text-left shadow-sm">
+                            <p class="font-bold text-slate-800 text-sm mb-2">How to fix this quickly:</p>
+                            <ol class="text-sm text-slate-600 list-decimal pl-5 space-y-2">
+                                <li>Tap the <strong>Lion icon</strong> in your address bar (top right).</li>
+                                <li>Toggle <strong>Shields DOWN</strong> for this website.</li>
+                                <li>The page will auto-refresh and load instantly!</li>
+                            </ol>
+                        </div>
+                    </div>
+                `;
             }
 
-            function hideError() {
-                document.getElementById('error-message').classList.add('hidden');
-            }
-
-            // 1. Initialize Today's Date Safely
-            try {
-                if (!window.NepaliDate) throw new Error("Library not loaded");
+            function initApp() {
+                // 1. Set Today's Date
                 const today = new window.NepaliDate();
-                // Manually format to prevent method errors
                 todayDateSpan.innerText = `${today.getDate()} ${NEPALI_MONTHS[today.getMonth()]} ${today.getYear()}`;
-            } catch (e) {
-                todayDateSpan.innerText = "Date Unavailable";
-                showError("Note: Internet connection required to load Nepali Calendar.");
-            }
 
-            // 2. Protocol Check (Fixes the mobile loading freeze)
-            // If running from file:// or content://, we SKIP fetching entirely and show the upload button.
-            const protocol = window.location.protocol;
-            if (protocol === 'file:' || protocol === 'content:') {
-                listContainer.innerHTML = ''; // Remove spinner
-                uploadSection.classList.remove('hidden');
-            } else {
-                // Try automatic fetch if on a real web server
+                // 2. Fetch data directly from GitHub (auto bypasses cache)
                 attemptAutoFetch();
             }
 
             async function attemptAutoFetch() {
                 try {
-                    const res = await fetch('birthdays.json');
-                    if (!res.ok) throw new Error('File not found automatically');
+                    // Fetch from the same directory on GitHub
+                    const res = await fetch('birthdays.json?t=' + new Date().getTime());
+                    if (!res.ok) throw new Error('Data file not found on server');
                     const data = await res.json();
                     processAndRender(data);
                 } catch (e) {
-                    // Fallback to upload
-                    listContainer.innerHTML = '';
-                    uploadSection.classList.remove('hidden');
+                    listContainer.innerHTML = `
+                        <div class="bg-red-50 text-red-700 p-6 rounded-xl border border-red-200 text-center">
+                            <h3 class="font-bold text-lg mb-1">File Not Found</h3>
+                            <p>We couldn't find the <code>birthdays.json</code> file in your GitHub repository. Please make sure it's uploaded in the same folder as this HTML file!</p>
+                        </div>
+                    `;
                 }
             }
 
-            // 3. Handle Manual JSON Upload
-            fileInput.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    try {
-                        const data = JSON.parse(event.target.result);
-                        uploadSection.classList.add('hidden');
-                        hideError();
-                        processAndRender(data);
-                    } catch (err) {
-                        showError("Invalid JSON file. Please make sure the format is correct.");
-                    }
-                };
-                reader.readAsText(file);
-            });
-
-            // 4. Process and Calculate
+            // 3. Process Dates and Render
             function processAndRender(data) {
                 if (!Array.isArray(data)) {
-                    showError("The JSON file should contain a list (array) of birthdays.");
-                    return;
-                }
-
-                if (!window.NepaliDate) {
-                    showError("Cannot calculate dates without internet access (calendar library missing).");
+                    listContainer.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-xl text-center">Data format error. JSON must be an array.</div>`;
                     return;
                 }
 
@@ -176,15 +151,14 @@
                     enrichedData.sort((a, b) => a.daysLeft - b.daysLeft);
                     renderCards(enrichedData);
                 } catch (e) {
-                    showError("Error processing dates. Make sure dates are exactly 'YYYY/MM/DD'.");
+                    listContainer.innerHTML = `<div class="bg-red-50 text-red-700 p-4 rounded-xl text-center">Error calculating dates. Ensure JSON dates are in "YYYY/MM/DD" format.</div>`;
                 }
             }
 
             function calculateCountdownAndAge(birthdayBS) {
-                // Safely split the string manually (e.g., "2050/02/05")
                 const parts = birthdayBS.split('/');
                 const bYear = Number(parts[0]);
-                const bMonth = Number(parts[1]) - 1; // Months are 0-indexed in JS
+                const bMonth = Number(parts[1]) - 1; // JS months are 0-11
                 const bDate = Number(parts[2]);
 
                 const currentNp = new window.NepaliDate();
@@ -192,7 +166,7 @@
                 const tMonth = currentNp.getMonth();
                 const tDate = currentNp.getDate();
 
-                // Has the birthday passed this year?
+                // Check if the birthday has passed this year
                 let isNextYear = false;
                 if (bMonth < tMonth) {
                     isNextYear = true;
@@ -203,7 +177,7 @@
                 const targetYear = tYear + (isNextYear ? 1 : 0);
                 const targetBday = new window.NepaliDate(targetYear, bMonth, bDate);
                 
-                // Use JS dates to accurately calculate the day difference
+                // Convert to normal JS Dates to accurately get the days between
                 const todayJs = new Date();
                 todayJs.setHours(0, 0, 0, 0); 
                 
@@ -223,14 +197,14 @@
                 };
             }
 
-            // 5. Build the UI
+            // 4. Build the beautiful UI
             function renderCards(birthdays) {
                 listContainer.innerHTML = '';
 
                 if (birthdays.length === 0) {
                     listContainer.innerHTML = `
                         <div class="text-center py-10 bg-white rounded-xl border border-slate-200">
-                            <p class="text-slate-500">No birthdays found in the data.</p>
+                            <p class="text-slate-500">No birthdays found in your JSON file.</p>
                         </div>
                     `;
                     return;
@@ -253,7 +227,7 @@
                         chipClasses = "bg-yellow-100 text-yellow-800";
                     }
 
-                    const cardTheme = isToday ? "border-pink-200 ring-2 ring-pink-100 bg-pink-50/50" : "border-slate-200 bg-white hover:border-indigo-200";
+                    const cardTheme = isToday ? "border-pink-200 ring-2 ring-pink-100 bg-pink-50/60" : "border-slate-200 bg-white hover:border-indigo-200";
                     const initials = person.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
                     const card = document.createElement('div');
@@ -287,5 +261,4 @@
 </html>
 
 
-
-
+```
